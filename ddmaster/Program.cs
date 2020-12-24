@@ -209,7 +209,7 @@ namespace ddmaster
                 file_ndd.Read(d64_rom, 0, d64_rom.Length);
 
                 //RAM Area
-                byte[] d64_ram = new byte[lbatobyte(disk_type, lba_ram_end - lba_ram_start, lba_ram_start + 24)];
+                byte[] d64_ram = new byte[lbatobyte(disk_type, lba_ram_end - lba_ram_start + 1, lba_ram_start + 24)];
                 file_ndd.Seek(0x738C0 + lbatobyte(disk_type, lba_ram_start, 24), SeekOrigin.Begin);
                 file_ndd.Read(d64_ram, 0, d64_ram.Length);
                 file_ndd.Close();
@@ -386,7 +386,7 @@ namespace ddmaster
                     totalbytes += blkbytes;
                     lba++;
                     init_flag = 0;
-                    if ((lba_count != 0) && (lba > 0x10db))
+                    if ((lba_count != 0) && (lba > (0x10db + 1)))
                     {
                         return -1;
                     }
