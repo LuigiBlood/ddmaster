@@ -9,7 +9,7 @@ namespace ddmaster
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("ddmaster v0.2");
+            Console.WriteLine("ddmaster v0.4");
             Console.WriteLine("---- by LuigiBlood");
             Console.WriteLine("");
 
@@ -20,6 +20,8 @@ namespace ddmaster
             string set_ipladdr = "";
             string set_iplsize = "";
             string set_ndd = "";
+            string set_conv = "";
+            string set_convpath = "";
 
             if (args.Length == 0 && ((args.Length & 1) == 1))
             {
@@ -65,29 +67,36 @@ namespace ddmaster
                     i++;
                     set_ndd = args[i];
                 }
+                else if (args[i] == "-conv")
+                {
+                    i++;
+                    set_conv = args[i];
+                    i++;
+                    set_convpath = args[i];
+                }
             }
 
             if (set_o == "")
                 set_o = "master.d64";
 
             //Check if required ones are found
-            if (set_ndd == "" && set_cfg == "" && set_rom == "")
+            if (set_ndd == "" && set_cfg == "" && set_rom == "" && set_conv == "")
             {
                 Usage();
                 return;
             }
 
             //Make Disk Code
-            if (set_ndd == "")
+            if (set_ndd == "" && set_conv == "")
             {
                 //Make Disk from CFG and ROM
                 int cfg_disktype = -1;
                 int cfg_destcode = 0;
                 byte[] cfg_diskid;
-                ProcessCfg(set_cfg, out cfg_disktype, out cfg_destcode, out cfg_diskid);
+                Generate.ProcessCfg(set_cfg, out cfg_disktype, out cfg_destcode, out cfg_diskid);
 
                 uint cfg_ipladdr = uint.Parse(set_ipladdr, System.Globalization.NumberStyles.HexNumber);
-                int cfg_iplsize = bytetolba(cfg_disktype, int.Parse(set_iplsize), 24);
+                int cfg_iplsize = Leo.ByteToLBA(cfg_disktype, int.Parse(set_iplsize), 24);
 
                 //Take ROM size
                 FileStream file_rom = new FileStream(set_rom, FileMode.Open);
@@ -109,8 +118,8 @@ namespace ddmaster
                     return;
                 }
 
-                int block_rom_size = bytetolba(cfg_disktype, (int)file_rom.Length, 24);
-                int block_rom_byte_size = lbatobyte(cfg_disktype, block_rom_size, 24);
+                int block_rom_size = Leo.ByteToLBA(cfg_disktype, (int)file_rom.Length, 24);
+                int block_rom_byte_size = Leo.LBAToByte(cfg_disktype, block_rom_size, 24);
 
                 byte[] rom_data = new byte[block_rom_byte_size];
                 Array.Fill<byte>(rom_data, 0xFF);
@@ -146,6 +155,106 @@ namespace ddmaster
                 file_out.Write(rom_data, 0, rom_data.Length);
 
                 file_out.Close();
+            }
+            else if (set_conv != "")
+            {
+                //Convert Disk
+                FileStream file_conv = new FileStream(set_convpath, FileMode.Open);
+
+                //Get Sys Data (assumes dev disk for now)
+                byte[] sys_data = new byte[256];
+                file_conv.Seek(0x9A10, SeekOrigin.Begin);
+                file_conv.Read(sys_data, 0, 0xE8);
+
+                byte disk_type = (byte)(sys_data[5] & 0x0F);
+
+                string orig_format;
+                if (file_conv.Length == 0x3DEC800)
+                    orig_format = "ndd";
+                else if (file_conv.Length == 0x435B0C0)
+                    orig_format = "mame";
+                else
+                    orig_format = "d64";
+
+                if (set_conv == orig_format)
+                {
+                    //Nothing to do
+                    file_conv.Close();
+                }
+                else if (set_conv == "mame" && orig_format == "ndd")
+                {
+                    //NDD to MAME
+                    byte[] output_mame = new byte[0x435B0C0];
+
+                    int[] table = Leo.GenLBAToPhysTable(sys_data);
+
+                    for (int i = 0; i < 4316; i++)
+                    {
+                        int pzone = Leo.LBAToPZone(i, disk_type);
+                        int physinfo = Leo.LBAToPhys(i, table);
+                        int cylinder = physinfo & 0xFFF;
+                        int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
+                        int head = (physinfo & 0x1000) >> 12;
+                        int block = (physinfo & 0x2000) >> 13;
+                        int blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
+
+                        //PZone Offset
+                        int mameoffset = Leo.MAMEStartOffset[pzone];
+                        //Track Offset
+                        mameoffset += ((blocksize * 2) * cylinder_zone);
+                        //Block Offset
+                        mameoffset += (blocksize * block);
+
+                        int lbaoffset = Leo.LBAToByte(disk_type, i, 0);
+
+                        file_conv.Seek(lbaoffset, SeekOrigin.Begin);
+                        file_conv.Read(output_mame, mameoffset, blocksize);
+                    }
+                    file_conv.Close();
+
+                    //Write D64 File
+                    FileStream file_out = new FileStream(set_o, FileMode.Create);
+                    file_out.Write(output_mame, 0, output_mame.Length);
+
+                    file_out.Close();
+                }
+                else if (set_conv == "ndd" && orig_format == "mame")
+                {
+                    //NDD to MAME
+                    byte[] output_ndd = new byte[0x3DEC800];
+
+                    int[] table = Leo.GenLBAToPhysTable(sys_data);
+
+                    for (int i = 0; i < 4316; i++)
+                    {
+                        int pzone = Leo.LBAToPZone(i, disk_type);
+                        int physinfo = Leo.LBAToPhys(i, table);
+                        int cylinder = physinfo & 0xFFF;
+                        int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
+                        int head = (physinfo & 0x1000) >> 12;
+                        int block = (physinfo & 0x2000) >> 13;
+                        int blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
+
+                        //PZone Offset
+                        int mameoffset = Leo.MAMEStartOffset[pzone];
+                        //Track Offset
+                        mameoffset += ((blocksize * 2) * cylinder_zone);
+                        //Block Offset
+                        mameoffset += (blocksize * block);
+
+                        int lbaoffset = Leo.LBAToByte(disk_type, i, 0);
+
+                        file_conv.Seek(mameoffset, SeekOrigin.Begin);
+                        file_conv.Read(output_ndd, lbaoffset, blocksize);
+                    }
+                    file_conv.Close();
+
+                    //Write D64 File
+                    FileStream file_out = new FileStream(set_o, FileMode.Create);
+                    file_out.Write(output_ndd, 0, output_ndd.Length);
+
+                    file_out.Close();
+                }
             }
             else
             {
@@ -183,6 +292,7 @@ namespace ddmaster
                 file_ndd.Seek(0, SeekOrigin.Begin);
                 file_ndd.Read(d64_sys_data, 0, 0xE8);
 
+                //Zeroes Useless Data
                 for (int i = 0; i < 5; i++)
                     d64_sys_data[i] = 0;
                 d64_sys_data[5] &= 0x0F;
@@ -204,13 +314,13 @@ namespace ddmaster
                 file_ndd.Read(d64_sys_id, 0, 0xE8);
 
                 //ROM Area
-                byte[] d64_rom = new byte[lbatobyte(disk_type, lba_rom_end + 1, 24)];
+                byte[] d64_rom = new byte[Leo.LBAToByte(disk_type, lba_rom_end + 1, 24)];
                 file_ndd.Seek(0x738C0, SeekOrigin.Begin);
                 file_ndd.Read(d64_rom, 0, d64_rom.Length);
 
                 //RAM Area
-                byte[] d64_ram = new byte[lbatobyte(disk_type, lba_ram_end - lba_ram_start + 1, lba_ram_start + 24)];
-                file_ndd.Seek(0x738C0 + lbatobyte(disk_type, lba_ram_start, 24), SeekOrigin.Begin);
+                byte[] d64_ram = new byte[Leo.LBAToByte(disk_type, lba_ram_end - lba_ram_start + 1, lba_ram_start + 24)];
+                file_ndd.Seek(0x738C0 + Leo.LBAToByte(disk_type, lba_ram_start, 24), SeekOrigin.Begin);
                 file_ndd.Read(d64_ram, 0, d64_ram.Length);
                 file_ndd.Close();
 
@@ -225,232 +335,26 @@ namespace ddmaster
             }
         }
 
-        static void ProcessCfg(string filepath, out int disktype, out int destcode, out byte[] diskid)
-        {
-            //FileStream file = new FileStream(filepath, FileMode.Open);
-            StreamReader reader = new StreamReader(filepath);
-            List<string> cfg = new List<string>();
-
-            string s_type = "";
-            string s_code = "";
-            string s_ver = "";
-            string s_diskno = "";
-            string s_ramuse = "";
-            string s_diskuse = "";
-            string s_dest = "";
-            string s_company = "";
-            string s_freearea = "";
-
-            string s = "";
-            while (s != null)
-            {
-                s = reader.ReadLine();
-                if (s != null)
-                {
-                    if (s.ToUpperInvariant().StartsWith("DISK TYPE"))
-                        s_type = GetCfg(s, "DISK TYPE");
-                    else if (s.ToUpperInvariant().StartsWith("INITIAL CODE"))
-                        s_code = GetCfg(s, "INITIAL CODE");
-                    else if (s.ToUpperInvariant().StartsWith("GAME VERSION"))
-                        s_ver = GetCfg(s, "GAME VERSION");
-                    else if (s.ToUpperInvariant().StartsWith("DISK NUMBER"))
-                        s_diskno = GetCfg(s, "DISK NUMBER");
-                    else if (s.ToUpperInvariant().StartsWith("RAM USE"))
-                        s_ramuse = GetCfg(s, "RAM USE");
-                    else if (s.ToUpperInvariant().StartsWith("DISK USE"))
-                        s_diskuse = GetCfg(s, "DISK USE");
-                    else if (s.ToUpperInvariant().StartsWith("DESTINATION CODE"))
-                        s_dest = GetCfg(s, "DESTINATION CODE");
-                    else if (s.ToUpperInvariant().StartsWith("COMPANY CODE"))
-                        s_company = GetCfg(s, "COMPANY CODE");
-                    else if (s.ToUpperInvariant().StartsWith("FREE AREA"))
-                        s_freearea = GetCfg(s, "FREE AREA");
-                }
-            }
-
-            reader.Close();
-
-            //REALLY BAD CODE
-            if (s_type.ToUpperInvariant() == "AUTO")
-                disktype = -1;
-            else
-                disktype = int.Parse(s_type);
-
-            List<byte> id = new List<byte>();
-            id.Add((byte)s_code[0]);
-            id.Add((byte)s_code[1]);
-            id.Add((byte)s_code[2]);
-            id.Add((byte)s_code[3]);
-
-            id.Add(byte.Parse(s_ver));
-            id.Add(byte.Parse(s_diskno));
-            id.Add(byte.Parse(s_ramuse));
-            id.Add(byte.Parse(s_diskuse));
-
-            if (s_dest == "JAPAN")
-                destcode = 0;
-            else
-                destcode = int.Parse(s_dest);
-
-            id.Add(0); id.Add(0); id.Add(0); id.Add(0);
-            id.Add(0); id.Add(0); id.Add(0); id.Add(0);
-
-            id.Add(0); id.Add(0); id.Add(0); id.Add(0);
-            id.Add(0); id.Add(0); id.Add(0); id.Add(0);
-
-            id.Add((byte)s_company[0]);
-            id.Add((byte)s_company[1]);
-
-            id.Add(byte.Parse(s_freearea.Substring(2, 2), System.Globalization.NumberStyles.HexNumber));
-            id.Add(byte.Parse(s_freearea.Substring(4, 2), System.Globalization.NumberStyles.HexNumber));
-            id.Add(byte.Parse(s_freearea.Substring(6, 2), System.Globalization.NumberStyles.HexNumber));
-            id.Add(byte.Parse(s_freearea.Substring(8, 2), System.Globalization.NumberStyles.HexNumber));
-            id.Add(byte.Parse(s_freearea.Substring(10, 2), System.Globalization.NumberStyles.HexNumber));
-            id.Add(byte.Parse(s_freearea.Substring(12, 2), System.Globalization.NumberStyles.HexNumber));
-
-            diskid = id.ToArray();
-        }
-
-        static string GetCfg(string line, string info)
-        {
-            return line.Substring(info.Length).Trim();
-        }
-
-        //64DD shit
-        static int bytetolba(int disktype, int nbytes, int startlba)
-        {
-            byte init_flag = 1;
-            int vzone = 1;
-            int pzone = 0;
-            int lba = startlba;
-            int lba_count = 0;
-            int byte_count = nbytes;
-            int blkbytes = 0;
-            if (nbytes != 0)
-            {
-                do
-                {
-                    if ((init_flag != 0) || (VZONE_LBA_TBL[disktype,vzone] == lba))
-                    {
-                        vzone = LBAToVZone(lba, disktype);
-                        pzone = VZoneToPZone(vzone, disktype);
-                        if (7 < pzone)
-                        {
-                            pzone -= 7;
-                        }
-                        blkbytes = BLOCK_SIZES[pzone];
-                    }
-                    if (byte_count < blkbytes)
-                    {
-                        byte_count = 0;
-                    }
-                    else
-                    {
-                        byte_count -= blkbytes;
-                    }
-                    lba++;
-                    lba_count++;
-                    init_flag = 0;
-                    if ((byte_count != 0) && (lba > 0x10db))
-                    {
-                        return -1;
-                    }
-                } while (byte_count != 0);
-            }
-            return lba_count;
-        }
-
-        static int lbatobyte(int disktype, int nlbas, int startlba)
-        {
-            int totalbytes = 0;
-            byte init_flag = 1;
-            int vzone = 1;
-            int pzone = 0;
-            int lba = startlba;
-            int lba_count = nlbas;
-            int blkbytes = 0;
-            if (nlbas != 0)
-            {
-                for (; lba_count != 0; lba_count--)
-                {
-                    if ((init_flag != 0) || (VZONE_LBA_TBL[disktype,vzone] == lba))
-                    {
-                        vzone = LBAToVZone(lba, disktype);
-                        pzone = VZoneToPZone(vzone, disktype);
-                        if (7 < pzone)
-                        {
-                            pzone -= 7;
-                        }
-                        blkbytes = BLOCK_SIZES[pzone];
-                    }
-                    totalbytes += blkbytes;
-                    lba++;
-                    init_flag = 0;
-                    if ((lba_count != 0) && (lba > (0x10db + 1)))
-                    {
-                        return -1;
-                    }
-                }
-            }
-            return totalbytes;
-        }
-
         static void Usage()
         {
             Console.WriteLine("Usage:");
             Console.WriteLine(" ddmaster <arguments>");
             Console.WriteLine("Arguments:");
-            Console.WriteLine("Make Disk with Config:");
+            Console.WriteLine("To make Disk with Config:");
             Console.WriteLine(" -cfg <filepath> = Use file as Disk Info configuration (required)");
             Console.WriteLine(" -rom <filepath> = Use file as the Disk ROM content (required)");
             //Console.WriteLine(" -ram <filepath> = Use file as the default Disk RAM content (optional)");
             Console.WriteLine(" -ipladdr <RAM address> = Start RAM Address of the main boot code in hex");
             Console.WriteLine(" -iplsize <Size> = Size in bytes (decimal) of the main boot code");
             Console.WriteLine("");
-            Console.WriteLine("Make Disk with NDD Image:");
+            Console.WriteLine("To make Disk with NDD Image:");
             Console.WriteLine(" -ndd <filepath> = Use file as retail disk file to convert to d64 (required)");
             Console.WriteLine("");
+            Console.WriteLine("To convert Disk Formats:");
+            Console.WriteLine(" -conv <toformat> <filepath> = Use file as disk file to convert to <format> (required)");
+            Console.WriteLine("    toformat = ndd, mame");
+            Console.WriteLine("");
             Console.WriteLine(" -o <filepath> = Use filepath as the output disk file (optional, will make master.d64 by default)");
-        }
-
-        static byte[] SECTOR_SIZES = { 0xE8, 0xD8, 0xD0, 0xC0, 0xB0, 0xA0, 0x90, 0x80, 0x70 };
-        static ushort[] BLOCK_SIZES = { 0x4D08, 0x47B8, 0x4510, 0x3FC0, 0x3A70, 0x3520, 0x2FD0, 0x2A80, 0x2530 };
-
-        static ushort[,] VZONE_LBA_TBL = {
-            {0x0124, 0x0248, 0x035A, 0x047E, 0x05A2, 0x06B4, 0x07C6, 0x08D8, 0x09EA, 0x0AB6, 0x0B82, 0x0C94, 0x0DA6, 0x0EB8, 0x0FCA, 0x10DC},
-            {0x0124, 0x0248, 0x035A, 0x046C, 0x057E, 0x06A2, 0x07C6, 0x08D8, 0x09EA, 0x0AFC, 0x0BC8, 0x0C94, 0x0DA6, 0x0EB8, 0x0FCA, 0x10DC},
-            {0x0124, 0x0248, 0x035A, 0x046C, 0x057E, 0x0690, 0x07A2, 0x08C6, 0x09EA, 0x0AFC, 0x0C0E, 0x0CDA, 0x0DA6, 0x0EB8, 0x0FCA, 0x10DC},
-            {0x0124, 0x0248, 0x035A, 0x046C, 0x057E, 0x0690, 0x07A2, 0x08B4, 0x09C6, 0x0AEA, 0x0C0E, 0x0D20, 0x0DEC, 0x0EB8, 0x0FCA, 0x10DC},
-            {0x0124, 0x0248, 0x035A, 0x046C, 0x057E, 0x0690, 0x07A2, 0x08B4, 0x09C6, 0x0AD8, 0x0BEA, 0x0D0E, 0x0E32, 0x0EFE, 0x0FCA, 0x10DC},
-            {0x0124, 0x0248, 0x035A, 0x046C, 0x057E, 0x0690, 0x07A2, 0x086E, 0x0980, 0x0A92, 0x0BA4, 0x0CB6, 0x0DC8, 0x0EEC, 0x1010, 0x10DC},
-            {0x0124, 0x0248, 0x035A, 0x046C, 0x057E, 0x0690, 0x07A2, 0x086E, 0x093A, 0x0A4C, 0x0B5E, 0x0C70, 0x0D82, 0x0E94, 0x0FB8, 0x10DC}
-        };
-
-        static byte[,] VZONE_PZONE_TBL = {
-            {0x0, 0x1, 0x2, 0x9, 0x8, 0x3, 0x4, 0x5, 0x6, 0x7, 0xF, 0xE, 0xD, 0xC, 0xB, 0xA},
-            {0x0, 0x1, 0x2, 0x3, 0xA, 0x9, 0x8, 0x4, 0x5, 0x6, 0x7, 0xF, 0xE, 0xD, 0xC, 0xB},
-            {0x0, 0x1, 0x2, 0x3, 0x4, 0xB, 0xA, 0x9, 0x8, 0x5, 0x6, 0x7, 0xF, 0xE, 0xD, 0xC},
-            {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0xC, 0xB, 0xA, 0x9, 0x8, 0x6, 0x7, 0xF, 0xE, 0xD},
-            {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0xF, 0xE},
-            {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0xF},
-            {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8}
-        };
-
-        static int LBAToVZone(int lba, int disktype)
-        {
-            for (int vzone = 0; vzone < 16; vzone++)
-            {
-                if (lba < VZONE_LBA_TBL[disktype,vzone])
-                {
-                    return vzone;
-                }
-            }
-            return -1;
-        }
-
-        static byte VZoneToPZone(int x, int y)
-        {
-            return VZONE_PZONE_TBL[y,x];
         }
     }
 }
