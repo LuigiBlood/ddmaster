@@ -5,7 +5,7 @@ using System.IO;
 
 namespace ddmaster
 {
-    public static class Generate
+    public static class Util
     {
         //Process mwrite Disk Configuration file
         public static void ProcessCfg(string filepath, out int disktype, out int destcode, out byte[] diskid)

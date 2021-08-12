@@ -101,7 +101,7 @@ namespace ddmaster
                 int cfg_disktype = -1;
                 int cfg_destcode = 0;
                 byte[] cfg_diskid;
-                Generate.ProcessCfg(set_cfg, out cfg_disktype, out cfg_destcode, out cfg_diskid);
+                Util.ProcessCfg(set_cfg, out cfg_disktype, out cfg_destcode, out cfg_diskid);
 
                 uint cfg_ipladdr = uint.Parse(set_ipladdr, System.Globalization.NumberStyles.HexNumber);
                 int cfg_iplsize = Leo.ByteToLBA(cfg_disktype, int.Parse(set_iplsize), 24);
@@ -277,7 +277,7 @@ namespace ddmaster
                     return;
                 }
 
-                byte[] sys_data = Generate.GetSystemData(file_ndd);
+                byte[] sys_data = Util.GetSystemData(file_ndd);
                 //Make sure it is a retail disk
                 if (sys_data == null || sys_data.Length != Leo.SECTOR_SIZES[0])
                 {
@@ -287,13 +287,13 @@ namespace ddmaster
                 }
 
                 //Test Region Code
-                uint temp = 0;
-                temp = (uint)(sys_data[0] & 0xFF);
-                temp = (temp << 8) | (uint)(sys_data[1] & 0xFF);
-                temp = (temp << 8) | (uint)(sys_data[2] & 0xFF);
-                temp = (temp << 8) | (uint)(sys_data[3] & 0xFF);
+                uint regioncode = 0;
+                regioncode = (uint)(sys_data[0] & 0xFF);
+                regioncode = (regioncode << 8) | (uint)(sys_data[1] & 0xFF);
+                regioncode = (regioncode << 8) | (uint)(sys_data[2] & 0xFF);
+                regioncode = (regioncode << 8) | (uint)(sys_data[3] & 0xFF);
 
-                if (temp != 0xE848D316 && temp != 0x2263EE56)
+                if (regioncode != 0xE848D316 && regioncode != 0x2263EE56)
                 {
                     Console.WriteLine("ERROR: NDD SYSTEM DATA DOES NOT HAVE A VALID REGION CODE");
                     file_ndd.Close();
@@ -323,7 +323,7 @@ namespace ddmaster
                 //Disk ID
                 byte[] d64_sys_id = new byte[256];
 
-                byte[] sys_id = Generate.GetDiskIDInfo(file_ndd);
+                byte[] sys_id = Util.GetDiskIDInfo(file_ndd);
 
                 //Make sure the Disk ID info is valid
                 if (sys_id == null)
@@ -333,6 +333,11 @@ namespace ddmaster
                     return;
                 }
                 sys_id.CopyTo(d64_sys_id, 0);
+
+                if (regioncode == 0xE848D316)
+                    d64_sys_id[0xE8] = 0;   //JAPAN
+                else if (regioncode == 0x2263EE56)
+                    d64_sys_id[0xE8] = 1;   //USA
 
                 //ROM Area
                 byte[] d64_rom = new byte[Leo.LBAToByte(disk_type, lba_rom_end + 1, 24)];
