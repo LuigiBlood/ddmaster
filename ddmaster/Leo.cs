@@ -157,9 +157,9 @@ namespace ddmaster
 
         public static int[] GenLBAToPhysTable(byte[] sys_data)
         {
-            int[] table = new int[4316];
+            int[] table = new int[Leo.LBA_COUNT];
 
-            for (int i = 0; i < 4316; i++)
+            for (int i = 0; i < Leo.LBA_COUNT; i++)
                 table[i] = LBAToPhys(i, sys_data);
 
             return table;
@@ -169,7 +169,7 @@ namespace ddmaster
         {
             int expectedvalue = track | (head * 0x1000) | (block * 0x2000);
 
-            for (int lba = 0; lba < 4316; lba++)
+            for (int lba = 0; lba < Leo.LBA_COUNT; lba++)
             {
                 if (table[lba] == expectedvalue)
                 {
@@ -234,6 +234,9 @@ namespace ddmaster
 
         /* Amount of User Sectors */
         public static int USER_SECTORS_COUNT = 85;
+
+        /* Amount of LBA */
+        public static int LBA_COUNT = 4316;
 
         public static int LBAToVZone(int lba, int disktype)
         {

@@ -106,13 +106,7 @@ namespace ddmaster
                 //Convert Disk
                 FileStream file_conv = new FileStream(set_convpath, FileMode.Open);
 
-                //Get Sys Data (assumes dev disk for now)
-                byte[] sys_data = new byte[256];
-                file_conv.Seek(0x9A10, SeekOrigin.Begin);
-                file_conv.Read(sys_data, 0, 0xE8);
-
-                byte disk_type = (byte)(sys_data[5] & 0x0F);
-
+                //Get Size
                 string orig_format;
                 if (file_conv.Length == 0x3DEC800)
                     orig_format = "ndd";
@@ -121,84 +115,21 @@ namespace ddmaster
                 else
                     orig_format = "d64";
 
-                if (set_conv == orig_format)
-                {
-                    //Nothing to do
-                    file_conv.Close();
-                }
-                else if (set_conv == "mame" && orig_format == "ndd")
+                file_conv.Close();
+
+                if (set_conv == "mame" && orig_format == "ndd")
                 {
                     //NDD to MAME
-                    byte[] output_mame = new byte[0x435B0C0];
-
-                    int[] table = Leo.GenLBAToPhysTable(sys_data);
-
-                    for (int i = 0; i < 4316; i++)
-                    {
-                        int pzone = Leo.LBAToPZone(i, disk_type);
-                        int physinfo = Leo.LBAToPhys(i, table);
-                        int cylinder = physinfo & 0xFFF;
-                        int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
-                        int head = (physinfo & 0x1000) >> 12;
-                        int block = (physinfo & 0x2000) >> 13;
-                        int blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
-
-                        //PZone Offset
-                        int mameoffset = Leo.MAMEStartOffset[pzone];
-                        //Track Offset
-                        mameoffset += ((blocksize * 2) * cylinder_zone);
-                        //Block Offset
-                        mameoffset += (blocksize * block);
-
-                        int lbaoffset = Leo.LBAToByte(disk_type, i, 0);
-
-                        file_conv.Seek(lbaoffset, SeekOrigin.Begin);
-                        file_conv.Read(output_mame, mameoffset, blocksize);
-                    }
-                    file_conv.Close();
-
-                    //Write D64 File
-                    FileStream file_out = new FileStream(set_o, FileMode.Create);
-                    file_out.Write(output_mame, 0, output_mame.Length);
-
-                    file_out.Close();
+                    int ret = Convert.NDDtoMAME(set_convpath, set_o);
+                    if (ret < 0)
+                        return;
                 }
                 else if (set_conv == "ndd" && orig_format == "mame")
                 {
-                    //NDD to MAME
-                    byte[] output_ndd = new byte[0x3DEC800];
-
-                    int[] table = Leo.GenLBAToPhysTable(sys_data);
-
-                    for (int i = 0; i < 4316; i++)
-                    {
-                        int pzone = Leo.LBAToPZone(i, disk_type);
-                        int physinfo = Leo.LBAToPhys(i, table);
-                        int cylinder = physinfo & 0xFFF;
-                        int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
-                        int head = (physinfo & 0x1000) >> 12;
-                        int block = (physinfo & 0x2000) >> 13;
-                        int blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
-
-                        //PZone Offset
-                        int mameoffset = Leo.MAMEStartOffset[pzone];
-                        //Track Offset
-                        mameoffset += ((blocksize * 2) * cylinder_zone);
-                        //Block Offset
-                        mameoffset += (blocksize * block);
-
-                        int lbaoffset = Leo.LBAToByte(disk_type, i, 0);
-
-                        file_conv.Seek(mameoffset, SeekOrigin.Begin);
-                        file_conv.Read(output_ndd, lbaoffset, blocksize);
-                    }
-                    file_conv.Close();
-
-                    //Write D64 File
-                    FileStream file_out = new FileStream(set_o, FileMode.Create);
-                    file_out.Write(output_ndd, 0, output_ndd.Length);
-
-                    file_out.Close();
+                    //MAME to NDD
+                    int ret = Convert.MAMEtoNDD(set_convpath, set_o);
+                    if (ret < 0)
+                        return;
                 }
             }
             else

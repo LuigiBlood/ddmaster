@@ -174,5 +174,95 @@ namespace ddmaster
             file_out.Close();
             return 0;
         }
+
+        public static int NDDtoMAME(string set_convpath, string set_o)
+        {
+            FileStream file_conv = new FileStream(set_convpath, FileMode.Open);
+
+            byte[] sys_data = Util.GetSystemData(file_conv);
+            if (sys_data == null)
+            {
+                Console.WriteLine("ERROR: COULD NOT FIND A VALID SYSTEM DATA BLOCK");
+                file_conv.Close();
+                return -1;
+            }
+
+            byte[] output_mame = new byte[0x435B0C0];
+            byte disk_type = (byte)(sys_data[5] & 0x0F);
+            int[] table = Leo.GenLBAToPhysTable(sys_data);
+
+            for (int i = 0; i < Leo.LBA_COUNT; i++)
+            {
+                int blocksizemame = 0;
+                int mameoffset = Util.GetMAMEBlockInfo(i, table, disk_type, out blocksizemame);
+
+                int blocksizendd = 0;
+                int nddoffset = Util.GetNDDLBAInfo(i, disk_type, out blocksizendd);
+
+                if (blocksizemame != blocksizendd)
+                {
+                    Console.WriteLine("ERROR: BLOCK SIZE COULD NOT BE CALCULATED CORRECTLY");
+                    file_conv.Close();
+                    return -1;
+                }
+
+                file_conv.Seek(nddoffset, SeekOrigin.Begin);
+                file_conv.Read(output_mame, mameoffset, blocksizemame);
+            }
+            file_conv.Close();
+
+            //Write D64 File
+            FileStream file_out = new FileStream(set_o, FileMode.Create);
+            file_out.Write(output_mame, 0, output_mame.Length);
+
+            file_out.Close();
+
+            return 0;
+        }
+
+        public static int MAMEtoNDD(string set_convpath, string set_o)
+        {
+            FileStream file_conv = new FileStream(set_convpath, FileMode.Open);
+
+            byte[] sys_data = Util.GetSystemData(file_conv);
+            if (sys_data == null)
+            {
+                Console.WriteLine("ERROR: COULD NOT FIND A VALID SYSTEM DATA BLOCK");
+                file_conv.Close();
+                return -1;
+            }
+
+            byte[] output_ndd = new byte[0x3DEC800];
+            byte disk_type = (byte)(sys_data[5] & 0x0F);
+            int[] table = Leo.GenLBAToPhysTable(sys_data);
+
+            for (int i = 0; i < Leo.LBA_COUNT; i++)
+            {
+                int blocksizemame = 0;
+                int mameoffset = Util.GetMAMEBlockInfo(i, table, disk_type, out blocksizemame);
+
+                int blocksizendd = 0;
+                int nddoffset = Util.GetNDDLBAInfo(i, disk_type, out blocksizendd);
+
+                if (blocksizemame != blocksizendd)
+                {
+                    Console.WriteLine("ERROR: BLOCK SIZE COULD NOT BE CALCULATED CORRECTLY");
+                    file_conv.Close();
+                    return -1;
+                }
+
+                file_conv.Seek(mameoffset, SeekOrigin.Begin);
+                file_conv.Read(output_ndd, nddoffset, blocksizendd);
+            }
+            file_conv.Close();
+
+            //Write D64 File
+            FileStream file_out = new FileStream(set_o, FileMode.Create);
+            file_out.Write(output_ndd, 0, output_ndd.Length);
+
+            file_out.Close();
+
+            return 0;
+        }
     }
 }

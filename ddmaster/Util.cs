@@ -207,5 +207,53 @@ namespace ddmaster
             }
             return true;
         }
+
+        public static int GetMAMEBlockInfo(int lba, byte[] sys_data)
+        {
+            byte disk_type = (byte)(sys_data[5] & 0x0F);
+
+            int pzone = Leo.LBAToPZone(lba, disk_type);
+            int physinfo = Leo.LBAToPhys(lba, sys_data);
+            int cylinder = physinfo & 0xFFF;
+            int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
+            int head = (physinfo & 0x1000) >> 12;
+            int block = (physinfo & 0x2000) >> 13;
+            int blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
+
+            //PZone Offset
+            int mameoffset = Leo.MAMEStartOffset[pzone];
+            //Track Offset
+            mameoffset += ((blocksize * 2) * cylinder_zone);
+            //Block Offset
+            mameoffset += (blocksize * block);
+
+            return mameoffset;
+        }
+
+        public static int GetMAMEBlockInfo(int lba, int[] table, byte disk_type, out int blocksize)
+        {
+            int pzone = Leo.LBAToPZone(lba, disk_type);
+            int physinfo = Leo.LBAToPhys(lba, table);
+            int cylinder = physinfo & 0xFFF;
+            int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
+            int head = (physinfo & 0x1000) >> 12;
+            int block = (physinfo & 0x2000) >> 13;
+            blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
+
+            //PZone Offset
+            int mameoffset = Leo.MAMEStartOffset[pzone];
+            //Track Offset
+            mameoffset += ((blocksize * 2) * cylinder_zone);
+            //Block Offset
+            mameoffset += (blocksize * block);
+
+            return mameoffset;
+        }
+
+        public static int GetNDDLBAInfo(int lba, byte disk_type, out int blocksize)
+        {
+            blocksize = Leo.LBAToByte(disk_type, 1, lba);
+            return Leo.LBAToByte(disk_type, lba, 0);
+        }
     }
 }
