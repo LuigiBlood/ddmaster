@@ -7,6 +7,7 @@ namespace ddmaster
 {
     public static class Generate
     {
+        //Process mwrite Disk Configuration file
         public static void ProcessCfg(string filepath, out int disktype, out int destcode, out byte[] diskid)
         {
             //FileStream file = new FileStream(filepath, FileMode.Open);
@@ -23,6 +24,7 @@ namespace ddmaster
             string s_company = "";
             string s_freearea = "";
 
+            //Get Configuration Information
             string s = "";
             while (s != null)
             {
@@ -58,6 +60,7 @@ namespace ddmaster
             else
                 disktype = int.Parse(s_type);
 
+            //Make Disk ID Info
             List<byte> id = new List<byte>();
             id.Add((byte)s_code[0]);
             id.Add((byte)s_code[1]);
@@ -96,6 +99,113 @@ namespace ddmaster
         public static string GetCfg(string line, string info)
         {
             return line.Substring(info.Length).Trim();
+        }
+
+
+        //Find Correct System Data (Return Block)
+        public static int FindSystemData(FileStream ndd)
+        {
+            //Verify if Data repeats in the following blocks (works for NDD and MAME formats)
+            int[] blocks = { 0, 1, 8, 9 };
+            bool found = false;
+            byte[] data = new byte[Leo.BLOCK_SIZES[0]];
+
+            //Retail Check
+            foreach (int i in blocks)
+            {
+                ndd.Seek(i * Leo.BLOCK_SIZES[0], SeekOrigin.Begin);
+                ndd.Read(data, 0, Leo.BLOCK_SIZES[0]);
+
+                found = IsDataRepeating(data, Leo.SECTOR_SIZES[0], Leo.USER_SECTORS_COUNT);
+                if (found)
+                    return i;
+            }
+
+            //Development Check
+            foreach (int i in blocks)
+            {
+                ndd.Seek((i + 2) * Leo.BLOCK_SIZES[0], SeekOrigin.Begin);
+                ndd.Read(data, 0, Leo.BLOCK_SIZES[0]);
+
+                found = IsDataRepeating(data, Leo.SECTOR_SIZES[3], Leo.USER_SECTORS_COUNT);
+                if (found)
+                    return i + 2;
+            }
+
+            return -1;
+        }
+
+        //Return System Data Info Byte Array
+        public static byte[] GetSystemData(FileStream ndd)
+        {
+            int block = FindSystemData(ndd);
+
+            //Return null if all System Data info is invalid
+            if (block < 0)
+                return null;
+
+            //Get System Data Info
+            byte[] sys;
+            if ((block & 2) == 0)
+                sys = new byte[Leo.SECTOR_SIZES[0]];    //Retail
+            else
+                sys = new byte[Leo.SECTOR_SIZES[3]];    //Development
+
+            ndd.Seek(block * Leo.BLOCK_SIZES[0], SeekOrigin.Begin);
+            ndd.Read(sys, 0, sys.Length);
+
+            return sys;
+        }
+
+        public static int FindDiskIDInfo(FileStream ndd)
+        {
+            //Verify if Data repeats in the following blocks (works for NDD and MAME formats)
+            int[] blocks = { 14, 15 };
+            bool found = false;
+            byte[] data = new byte[Leo.BLOCK_SIZES[0]];
+
+            //Check
+            foreach (int i in blocks)
+            {
+                ndd.Seek(i * Leo.BLOCK_SIZES[0], SeekOrigin.Begin);
+                ndd.Read(data, 0, Leo.BLOCK_SIZES[0]);
+
+                found = IsDataRepeating(data, Leo.SECTOR_SIZES[0], Leo.USER_SECTORS_COUNT);
+                if (found)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        public static byte[] GetDiskIDInfo(FileStream ndd)
+        {
+            int block = FindDiskIDInfo(ndd);
+
+            //Return null if all System Data info is invalid
+            if (block < 0)
+                return null;
+
+            //Get Disk ID Info
+            byte[] diskid = new byte[Leo.SECTOR_SIZES[0]];
+
+            ndd.Seek(block * Leo.BLOCK_SIZES[0], SeekOrigin.Begin);
+            ndd.Read(diskid, 0, diskid.Length);
+
+            return diskid;
+        }
+
+        public static bool IsDataRepeating(byte[] data, int sectorsize, int sectors)
+        {
+            for (int j = 1; j < sectors; j++)
+            {
+                for (int k = 0; k < sectorsize; k++)
+                {
+                    if (data[k] != data[k + (j * sectorsize)])
+                        return false;
+                }
+            }
+            return true;
         }
     }
 }

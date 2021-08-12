@@ -34,41 +34,49 @@ namespace ddmaster
             {
                 if (args[i] == "-cfg")
                 {
+                    //64DD Disk Configuration
                     i++;
                     set_cfg = args[i];
                 }
                 else if (args[i] == "-rom")
                 {
+                    //64DD Disk User ROM Area Binary
                     i++;
                     set_rom = args[i];
                 }
                 else if (args[i] == "-ram")
                 {
+                    //64DD Disk User RAM Area Binary
                     i++;
                     set_ram = args[i];
                 }
                 else if (args[i] == "-ipladdr")
                 {
+                    //Address for IPL to load and execute
                     i++;
                     set_ipladdr = args[i];
                 }
                 else if (args[i] == "-iplsize")
                 {
+                    //Size in bytes to load
                     i++;
                     set_iplsize = args[i];
                 }
                 else if (args[i] == "-o")
                 {
+                    //Output Filename
                     i++;
                     set_o = args[i];
                 }
                 else if (args[i] == "-ndd")
                 {
+                    //NDD (64DD Dump format) Filename
                     i++;
                     set_ndd = args[i];
                 }
                 else if (args[i] == "-conv")
                 {
+                    //Conversion to Format and Filename
                     i++;
                     set_conv = args[i];
                     i++;
@@ -269,28 +277,32 @@ namespace ddmaster
                     return;
                 }
 
-                //Make sure it is a retail disk (assumes the first block is correct for now)
-                for (int i = 0; i < 85; i++)
+                byte[] sys_data = Generate.GetSystemData(file_ndd);
+                //Make sure it is a retail disk
+                if (sys_data == null || sys_data.Length != Leo.SECTOR_SIZES[0])
                 {
-                    file_ndd.Seek(i * 0xE8, SeekOrigin.Begin);
-                    uint temp = 0;
-                    temp = (uint)(file_ndd.ReadByte() & 0xFF);
-                    temp = (temp << 8) | (uint)(file_ndd.ReadByte() & 0xFF);
-                    temp = (temp << 8) | (uint)(file_ndd.ReadByte() & 0xFF);
-                    temp = (temp << 8) | (uint)(file_ndd.ReadByte() & 0xFF);
+                    Console.WriteLine("ERROR: COULD NOT FIND A VALID RETAIL SYSTEM DATA BLOCK");
+                    file_ndd.Close();
+                    return;
+                }
 
-                    if (temp != 0xE848D316 && temp != 0x2263EE56)
-                    {
-                        Console.WriteLine("ERROR: NDD SYSTEM DATA BLOCK 0 IS NOT VALID");
-                        file_ndd.Close();
-                        return;
-                    }
+                //Test Region Code
+                uint temp = 0;
+                temp = (uint)(sys_data[0] & 0xFF);
+                temp = (temp << 8) | (uint)(sys_data[1] & 0xFF);
+                temp = (temp << 8) | (uint)(sys_data[2] & 0xFF);
+                temp = (temp << 8) | (uint)(sys_data[3] & 0xFF);
+
+                if (temp != 0xE848D316 && temp != 0x2263EE56)
+                {
+                    Console.WriteLine("ERROR: NDD SYSTEM DATA DOES NOT HAVE A VALID REGION CODE");
+                    file_ndd.Close();
+                    return;
                 }
 
                 //Sys Data
                 byte[] d64_sys_data = new byte[256];
-                file_ndd.Seek(0, SeekOrigin.Begin);
-                file_ndd.Read(d64_sys_data, 0, 0xE8);
+                sys_data.CopyTo(d64_sys_data, 0);
 
                 //Zeroes Useless Data
                 for (int i = 0; i < 5; i++)
@@ -310,8 +322,17 @@ namespace ddmaster
 
                 //Disk ID
                 byte[] d64_sys_id = new byte[256];
-                file_ndd.Seek(0x43670, SeekOrigin.Begin);
-                file_ndd.Read(d64_sys_id, 0, 0xE8);
+
+                byte[] sys_id = Generate.GetDiskIDInfo(file_ndd);
+
+                //Make sure the Disk ID info is valid
+                if (sys_id == null)
+                {
+                    Console.WriteLine("ERROR: COULD NOT FIND A VALID DISK ID BLOCK");
+                    file_ndd.Close();
+                    return;
+                }
+                sys_id.CopyTo(d64_sys_id, 0);
 
                 //ROM Area
                 byte[] d64_rom = new byte[Leo.LBAToByte(disk_type, lba_rom_end + 1, 24)];
