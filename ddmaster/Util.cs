@@ -236,8 +236,8 @@ namespace ddmaster
             int physinfo = Leo.LBAToPhys(lba, table);
             int cylinder = physinfo & 0xFFF;
             int cylinder_zone = cylinder - Leo.OUTERCYL_TBL[(pzone < 8) ? pzone % 8 : pzone - 8];
-            int head = (physinfo & 0x1000) >> 12;
-            int block = (physinfo & 0x2000) >> 13;
+            int head = (physinfo & 0x1000) != 0 ? 1 : 0;
+            int block = (physinfo & 0x2000) != 0 ? 1 : 0;
             blocksize = Leo.BLOCK_SIZES[(pzone < 8) ? pzone % 8 : pzone - 7];
 
             //PZone Offset
@@ -250,7 +250,7 @@ namespace ddmaster
             return mameoffset;
         }
 
-        public static int GetNDDLBAInfo(int lba, byte disk_type, out int blocksize)
+        public static int GetNDDBlockInfo(int lba, byte disk_type, out int blocksize)
         {
             blocksize = Leo.LBAToByte(disk_type, 1, lba);
             return Leo.LBAToByte(disk_type, lba, 0);

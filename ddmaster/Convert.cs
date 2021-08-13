@@ -197,7 +197,7 @@ namespace ddmaster
                 int mameoffset = Util.GetMAMEBlockInfo(i, table, disk_type, out blocksizemame);
 
                 int blocksizendd = 0;
-                int nddoffset = Util.GetNDDLBAInfo(i, disk_type, out blocksizendd);
+                int nddoffset = Util.GetNDDBlockInfo(i, disk_type, out blocksizendd);
 
                 if (blocksizemame != blocksizendd)
                 {
@@ -242,7 +242,7 @@ namespace ddmaster
                 int mameoffset = Util.GetMAMEBlockInfo(i, table, disk_type, out blocksizemame);
 
                 int blocksizendd = 0;
-                int nddoffset = Util.GetNDDLBAInfo(i, disk_type, out blocksizendd);
+                int nddoffset = Util.GetNDDBlockInfo(i, disk_type, out blocksizendd);
 
                 if (blocksizemame != blocksizendd)
                 {
